@@ -46,7 +46,7 @@ void ZedCamera::captureAndSave()
                   <<zed_image.timestamp.data_ns<<std::endl;
 
         // Save image in build/images/
-        zed_image.write((mDirectory + "zed").c_str());
+        zed_image.write((mDirectory + "left-zed.png").c_str());
 
     }
 }

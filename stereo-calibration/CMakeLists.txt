@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(realsense2world LANGUAGES CXX)
+project(stereo-calibration LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
