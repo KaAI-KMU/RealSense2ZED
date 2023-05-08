@@ -17,6 +17,9 @@ RealSenseCamera::RealSenseCamera(const std::string& directory)
     // Start the pipeline
     mPipe.start(cfg);
     mDepthStreamProfile = mPipe.get_active_profile().get_stream(RS2_STREAM_DEPTH);
+
+    // 내부 파라미터(K), 왜곡 파라미터(D)를 포함하는 struct 생성
+    mIntrinsics = mDepthStreamProfile.as<rs2::video_stream_profile>().get_intrinsics();
 }
 
 RealSenseCamera::~RealSenseCamera()
@@ -24,14 +27,36 @@ RealSenseCamera::~RealSenseCamera()
     mPipe.stop();
 }
 
-rs2_intrinsics RealSenseCamera::getIntrinsicParam()
+cv::Mat RealSenseCamera::getIntrinsics() const
 {
-    cDepthIntrinsicsParam = mDepthStreamProfile.as<rs2::video_stream_profile>().get_intrinsics();
-    return cDepthIntrinsicsParam;
+    cv::Mat K = cv::Mat::eye(3, 3, CV_64F); // create a 3x3 identity matrix
+    K.at<double>(0, 0) = mIntrinsics.fx;
+    K.at<double>(1, 1) = mIntrinsics.fy;
+    K.at<double>(0, 2) = mIntrinsics.ppx;
+    K.at<double>(1, 2) = mIntrinsics.ppy;
+    K.at<double>(2, 2) = 1.0;
+
+    return K;
 }
 
-void RealSenseCamera::captureAndSave() const
+std::vector<float> RealSenseCamera::getCoeffs() const
 {
+    std::vector<float> D;
+    for (auto i = 0; i < 5; i++)
+        D.push_back(mIntrinsics.coeffs[i]);
+
+    //    float k1 = mIntrinsics.coeffs[0];
+    //    float k2 = mIntrinsics.coeffs[1];
+    //    float k3 = mIntrinsics.coeffs[2];
+    //    float p1 = mIntrinsics.coeffs[3];
+    //    float p2 = mIntrinsics.coeffs[4];
+
+    return D;
+}
+
+void RealSenseCamera::captureAndSave(const int& img_num) const
+{
+    std::string fileName = mDirectory + std::to_string(img_num) + ".png";
     rs2::frameset frames = mPipe.wait_for_frames(5000);
     if (frames.size() < 2) {
         throw std::runtime_error("Failed to capture frames from the camera.");
@@ -47,7 +72,9 @@ void RealSenseCamera::captureAndSave() const
         throw std::runtime_error("Failed to convert color frame to OpenCV matrix.");
     }
 
-    if (!cv::imwrite(mDirectory + "/right-realsense.png", color_mat)) {
+    if (!cv::imwrite(fileName, color_mat)) {
         throw std::runtime_error("Failed to save color image to disk.");
     }
+    // 0.3초 딜레이
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 }

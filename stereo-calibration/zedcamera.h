@@ -2,6 +2,9 @@
 #include <sl/Camera.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/imgcodecs.hpp> // imwrite
+#include <vector>
+#include <thread>
+#include <chrono>
 
 class ZedCamera
 {
@@ -9,14 +12,15 @@ public:
     ZedCamera(const std::string& directory);
     ~ZedCamera();
 
-    sl::CameraParameters getIntrinsicParam();
-    void captureAndSave();
+    cv::Mat getIntrinsics() const;
+    std::vector<float> getCoeffs() const;
+    void captureAndSave(const int& img_num);
 
 private:
     sl::Camera mZed;
     sl::InitParameters mInitParams;
     sl::ERROR_CODE err;
-    sl::CalibrationParameters mLeftCalibrationParams;
     std::string mDirectory;
+    sl::CameraParameters mIntrinsics;
 };
 
