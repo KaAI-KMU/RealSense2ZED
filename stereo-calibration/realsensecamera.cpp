@@ -16,7 +16,7 @@ RealSenseCamera::RealSenseCamera(const std::string& directory)
 
     // Start the pipeline
     mPipe.start(cfg);
-    mDepthStreamProfile = mPipe.get_active_profile().get_stream(RS2_STREAM_DEPTH);
+    mDepthStreamProfile = mPipe.get_active_profile().get_stream(RS2_STREAM_COLOR);
 
     // 내부 파라미터(K), 왜곡 파라미터(D)를 포함하는 struct 생성
     mIntrinsics = mDepthStreamProfile.as<rs2::video_stream_profile>().get_intrinsics();
@@ -75,6 +75,4 @@ void RealSenseCamera::captureAndSave(const int& img_num) const
     if (!cv::imwrite(fileName, color_mat)) {
         throw std::runtime_error("Failed to save color image to disk.");
     }
-    // 0.3초 딜레이
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
 }

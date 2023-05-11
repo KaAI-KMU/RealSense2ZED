@@ -4,8 +4,11 @@ ZedCamera::ZedCamera(const std::string& directory)
     : mDirectory(directory)
 {
     // Set configuration parameters
-    mInitParams.camera_resolution = sl::RESOLUTION::HD1080;
-    mInitParams.camera_fps = 30;
+    mInitParams.coordinate_system = sl::COORDINATE_SYSTEM::IMAGE; // Right-haned
+    mInitParams.camera_resolution = sl::RESOLUTION::AUTO; // Resolution
+    mInitParams.camera_fps = 30; // Frame
+    mInitParams.depth_mode = sl::DEPTH_MODE::ULTRA;
+    mInitParams.coordinate_units = sl::UNIT::MILLIMETER; // Use millimeter units (for depth measurements)
 
     // Open the ZED camera
     err = mZed.open(mInitParams);
@@ -13,6 +16,7 @@ ZedCamera::ZedCamera(const std::string& directory)
         std::cout << "Failed to open ZED camera: " << sl::toString(err) << std::endl;
         exit(1);
     }
+
     mIntrinsics = mZed.getCameraInformation().camera_configuration.calibration_parameters.left_cam;
 }
 
@@ -61,14 +65,44 @@ void ZedCamera::captureAndSave(const int& img_num)
         // Get the left image
         mZed.retrieveImage(zed_image, sl::VIEW::LEFT);
 
-        // Display the image resolution and its acquisition timestamp
-        std::cout<<"Image resolution: "<< zed_image.getWidth()<<"x"
-                  <<zed_image.getHeight() <<" || Image timestamp: "
-                  <<zed_image.timestamp.data_ns<<std::endl;
-
         // Save image in build/images/
         zed_image.write(fileName.c_str());
     }
-    // 0.3초 딜레이
-    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+}
+
+#include <opencv2/opencv.hpp>
+#include <opencv2/calib3d/calib3d.hpp>
+#include <opencv2/calib3d/calib3d_c.h>
+#include <opencv2/highgui/highgui.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/opencv_modules.hpp>
+
+sl::float3 ZedCamera::convert2Dto3D(int i)
+{
+    sl::Mat image, depth, point_cloud;
+    sl::float4 point_cloud_value;
+
+    runtime_params.measure3D_reference_frame = sl::REFERENCE_FRAME::WORLD;
+    mZed.grab(runtime_params);
+
+    if (err == sl::ERROR_CODE::SUCCESS) {
+        mZed.retrieveImage(image, sl::VIEW::LEFT);
+        mZed.retrieveMeasure(depth, sl::MEASURE::DEPTH);
+        mZed.retrieveMeasure(point_cloud, sl::MEASURE::XYZRGBA);
+        image.write((mDirectory + "image" + std::to_string(i) + ".png").c_str());
+        depth.write((mDirectory + "depth" + std::to_string(i) + ".png").c_str());
+
+        int x = image.getWidth() / 2;
+        int y = image.getHeight() / 2;
+
+        point_cloud.getValue(x, y, &point_cloud_value);
+        if(std::isfinite(point_cloud_value.z)){
+            float distance = sqrt(point_cloud_value.x * point_cloud_value.x + point_cloud_value.y * point_cloud_value.y + point_cloud_value.z * point_cloud_value.z);
+            std::cout<<"Distance to Camera at {"<<x<<";"<<y<<"}: "<<distance<<"mm"<<std::endl;
+        }else
+            std::cout<<"The Distance can not be computed at {"<<x<<";"<<y<<"}"<<std::endl;
+        std::cout << "point_cloud: " << point_cloud_value << std::endl;
+    }
+
+    return point_cloud_value;
 }

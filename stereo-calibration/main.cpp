@@ -16,31 +16,41 @@ int main(int argc, char **argv)
 {
     // 현재 실행 파일의 경로를 얻어옴
     string exe_path = std::filesystem::path(argv[0]).parent_path();
-    string directory_zed = (exe_path + "/images/zed/");
-    string directory_rs = (exe_path + "/images/realsense/");
+    string directory_depth = (exe_path + "/images/depth/");
+//    string directory_zed = (exe_path + "/images/zed/");
+//    string directory_rs = (exe_path + "/images/realsense/");
 
     // 각각의 카메라 사진들을 저장할 디렉토리 생성
-    filesystem::create_directories(directory_zed);
-    filesystem::create_directories(directory_rs);
+    filesystem::create_directories(directory_depth);
+//    filesystem::create_directories(directory_zed);
+//    filesystem::create_directories(directory_rs);
 
-    // Realsense 카메라 내부 파라미터, 왜곡 파라미터
-    RealSenseCamera realsense(directory_rs);
-    auto K_rs = realsense.getIntrinsics();
-    auto D_rs = realsense.getCoeffs();
+//    // Realsense 카메라 내부 파라미터, 왜곡 파라미터
+//    RealSenseCamera realsense(directory_rs);
+//    auto K_rs = realsense.getIntrinsics();
+//    auto D_rs = realsense.getCoeffs();
 
     // ZED 카메라 내부 파라미터, 왜곡 파라미터
-    ZedCamera zed(directory_zed);
+    ZedCamera zed(directory_depth);
     auto K_zed = zed.getIntrinsics();
     auto D_zed = zed.getCoeffs();
 
     /// 만약 사진을 찍어야 한다면 다음 코드 이용
     /// 나머지 코드는 주석처리
-    //    for (auto i = 0; i < 30; i++) {
-    //        realsense.captureAndSave(i);
-    //        //zed.captureAndSave(i);
-    //    }
 
+//    for (auto i = 0; i < 30; i++) {
+//        realsense.captureAndSave(i);
+//        zed.captureAndSave(i);
+//        std::this_thread::sleep_for(std::chrono::milliseconds(500)); // 0.5초 딜레이
+//    }
 
+    /// 2D image point to 3D point
+    for (auto i = 0; i < 30; i++)  {
+        sl::float3 depth_point = zed.convert2Dto3D(i);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200)); // 0.5초 딜레이
+    }
+
+/*
     // 체크보드 사이즈 정의
     const int board_width{6};
     const int board_height{9};
@@ -52,8 +62,10 @@ int main(int argc, char **argv)
     cv::glob(directory_rs, rs_img);
 
     cout << "Image size: " << zed_img.size() << endl;
-    if (zed_img.size() == 0)
+    if (zed_img.size() == 0) {
         cout << "No images\n" << endl;
+        return 0;
+    }
 
     // 각 이미지에 대해 3D 좌표를 저장하는 벡터 선언
     vector<vector<cv::Point3f>> object_points;
@@ -61,6 +73,8 @@ int main(int argc, char **argv)
     // 각 이미지에 대해 2D 좌표를 저장하는 벡터 선언
     vector<vector<cv::Point2f>> imagePoint_zed;
     vector<vector<cv::Point2f>> imagePoint_rs;
+    vector<vector<cv::Point2f>> zed_img_points;
+    vector<vector<cv::Point2f>> rs_img_points;
 
     // World 좌표계 3D 포인트 좌표
     vector<cv::Point3f> objp;
@@ -80,6 +94,8 @@ int main(int argc, char **argv)
 
     // findChessboardCorners 되었는지 안 되었는지를 확인하기 위한 용도
     bool found_zed, found_rs;
+    cv::Size newSize(640, 480);
+    cv::Rect roi(0, 0, 1440, 1080);
 
     // 이미지 개수만큼 for loop
     for (int i = 0; i < zed_img.size(); i++)
@@ -88,12 +104,13 @@ int main(int argc, char **argv)
         img1 = cv::imread(zed_img[i]);
         img2 = cv::imread(rs_img[i]);
 
+        // image crop and resize
+        img1 = img1(roi);
+        cv::resize(img1, img1, newSize);
+
         // COLOR 니까 GRAY로 바꾸기 위해 cvtColor 함수를 사용해 변경
         cv::cvtColor(img1, gray1, cv::COLOR_BGR2GRAY);
         cv::cvtColor(img2, gray2, cv::COLOR_BGR2GRAY);
-
-        // success = cv::findChessboardCorners(gray, cv::Size(CHECKERBOARD[0],
-        //           CHECKERBOARD[1]), corner_pts, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FAST_CHECK | CV_CALIB_CB_NORMALIZE_IMAGE);
 
         // 체크보드 코너 개수
         // board_size와 같은 개수를 찾으면 true 아니면 false
@@ -101,10 +118,13 @@ int main(int argc, char **argv)
         found_rs = cv::findChessboardCorners(gray2, board_size, corner_pts2, CV_CALIB_CB_ADAPTIVE_THRESH | CV_CALIB_CB_FILTER_QUADS);
 
         // 둘 중 하나라도 false면 해당 image 이름 출력
-        if (!found_zed || !found_rs) {
-            cout << "findChessboardCorners Error!" << endl;
-            cout << "zed image name: " << zed_img[i]
-                 << "\nrealsense image name: " << rs_img[i] << endl;
+        if (!found_zed) {
+            cout << "findChessboardCorners Error!: ";
+            cout << "zed image name: " << zed_img[i] << endl;
+        }
+        if (!found_rs) {
+            cout << "findChessboardCorners Error!";
+            cout << "realsense image name: " << rs_img[i] << endl;
         }
 
         // 기준 인스턴스 생성
@@ -116,12 +136,15 @@ int main(int argc, char **argv)
         {
             cv::cornerSubPix(gray1, corner_pts1, cv::Size(11, 11), cv::Size(-1, -1), criteria);
             cv::drawChessboardCorners(gray1, board_size, corner_pts1, found_zed);
+//            cv::imshow("gray1", gray1);
         }
 
         if (found_rs)
         {
             cv::cornerSubPix(gray2, corner_pts2, cv::Size(11, 11), cv::Size(-1, -1), criteria);
             cv::drawChessboardCorners(gray2, board_size, corner_pts2, found_rs);
+//            cv::imshow("gray2", gray2);
+//            cv::waitKey(0);
         }
 
         if (found_zed && found_rs) {
@@ -132,52 +155,12 @@ int main(int argc, char **argv)
         }
     }
 
-//    cv::Mat cameraMatrix_left, distCoeffs_left, R_left, T_left;	// 파라미터를 구하기 위한 Mat 객체 선언
-//    cv::Mat cameraMatrix_right, distCoeffs_right, R_right, T_right;
-
-    // cameraMatrix는 내부 파라미터
-    // distCoeffs는 왜곡 파라미터
-    // R, T 는 외부 파라미터
-
-    // Performing camera calibration by passing the value of known 3D points (objpoints and corresponding pixel coordinates of the detected corners (imgpoints)
-
-    // cv::calibrateCamera(objpoints, imgpoints, cv::Size(gray.rows, gray.cols), cameraMatrix, distCoeffs, R, T);
-//    cv::calibrateCamera(object_points, imagePoint_zed, gray1.size(), K_zed, D_zed, R_left, T_left);
-//    cv::calibrateCamera(object_points, imagePoint_rs, gray2.size(), K_zed, distCoeffs_right, R_right, T_right);
-    // 위에서 저장했던 object point와 image point를 이용하여 parameter 구하기
-    // double calibrateCamera(InputArrayOfArrays objectPoints, InputArrayOfArrays imagePoints, Size imageSize, InputOutputArray cameraMatrix, InputOutputArray distCoeffs, OutputArrayOfArrays rvecs, OutputArrayOfArrays tvecs)
-
-
-    // 각각 구해진 왼쪽과 오른쪽의 R과 T , and 내부파라미터를 통해 새로운 함수를 사용해 Pair의 관계를 구해야 함  (OpenCV stereo calibration)
-
-    // 왼쪽
-//    cout << "[왼쪽 IR Camera Parameters]\n";
-//    cout << "Left CameraMatrix\n" << cameraMatrix_left << "\n\n";
-//    cout << "Left DistCoeffs\n" << distCoeffs_left << "\n\n";
-//    cout << "Left Rotation Vector\n" << R_left << "\n\n";
-//    cout << "Left Translation Vector\n" << T_left << "\n\n\n";
-
-    // 오른쪽
-//    cout << "[오른쪽 IR Camera Parameters]\n";
-//    cout << "Right CameraMatrix\n" << cameraMatrix_right << "\n\n";
-//    cout << "Right DistCoeffs\n" << distCoeffs_right << "\n\n";
-//    cout << "Right Rotation Vector\n" << R_right << "\n\n";
-//    cout << "Right Translation Vector\n" << T_right << "\n\n\n";
-
     // Stereo Calibration 시작
     cv::Mat R, T, E, F;
 
-    // cv::stereoCalibrate (InputArrayOfArrays objectPoints, InputArrayOfArrays imagePoints1, InputArrayOfArrays imagePoints2,
-    //                        InputOutputArray cameraMatrix1, InputOutputArray distCoeffs1, InputOutputArray cameraMatrix2, InputOutputArray distCoeffs2, Size imageSize,
-    //                        InputOutputArray R, InputOutputArray T, OutputArray E, OutputArray F, OutputArray perViewErrors,
-    //                        int flags=CALIB_FIX_INTRINSIC, TermCriteria criteria=TermCriteria(TermCriteria::COUNT+TermCriteria::EPS, 30, 1e-6))
-
-    cv::Size imgsize = gray1.size();
-
-    cv::stereoCalibrate(object_points, imagePoint_zed, imagePoint_rs,
-                        K_zed, D_zed, K_rs, D_rs, imgsize,
-                        R, T, E, F, cv::CALIB_FIX_INTRINSIC, cv::TermCriteria(cv::TermCriteria::COUNT + cv::TermCriteria::EPS, 30, 1e-6));
-
+    cv::stereoCalibrate(object_points, zed_img_points, rs_img_points,
+                        K_zed, D_zed, K_rs, D_rs, newSize,
+                        R, T, E, F);
     // Stereo Calibration Parameters
     cout << "[Stereo Camera parameters]\n";
     cout << "Rotation Matrix\n" << R << "\n\n";
@@ -188,8 +171,8 @@ int main(int argc, char **argv)
     cv::Mat R1, R2, P1, P2, Q;
     cv::Rect validRoi[2];
 
-    cv::stereoRectify(K_zed, D_zed, K_rs, D_rs, imgsize,
-                      R, T, R1, R2, P1, P2, Q, cv::CALIB_ZERO_DISPARITY, 1, imgsize, &validRoi[0], &validRoi[1]);
+    cv::stereoRectify(K_zed, D_zed, K_rs, D_rs, newSize,
+                      R, T, R1, R2, P1, P2, Q, cv::CALIB_ZERO_DISPARITY, 1, newSize, &validRoi[0], &validRoi[1]);
 
     // 양 카메라의 이미지 평면을 같은 평면으로 바꾸는 변환 행렬을 계산
     cout << "[Stereo Rectify parameters]\n";
@@ -200,9 +183,9 @@ int main(int argc, char **argv)
     cout << "Q\n" << Q << "\n\n\n";
 
     // Realsense 3D 좌표 (x, y, z) 초기화
-    double x = 61;
-    double y = 53;
-    double z = 300;
+    double x = 10;
+    double y = 20;
+    double z = 30;
 
     // Realsense 3D 좌표를 행렬로 변환
     cv::Mat rs_point = (cv::Mat_<double>(3,1) << x, y, z);
@@ -214,6 +197,6 @@ int main(int argc, char **argv)
     cout << "ZED 좌표계의 x : " << zed_point.at<double>(0) << endl;
     cout << "ZED 좌표계의 y : " << zed_point.at<double>(1) << endl;
     cout << "ZED 좌표계의 z : " << zed_point.at<double>(2) << endl;
-
+*/
     return 0;
 }

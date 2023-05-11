@@ -15,6 +15,7 @@ public:
     cv::Mat getIntrinsics() const;
     std::vector<float> getCoeffs() const;
     void captureAndSave(const int& img_num);
+    sl::float3 convert2Dto3D(int i);
 
 private:
     sl::Camera mZed;
@@ -22,5 +23,6 @@ private:
     sl::ERROR_CODE err;
     std::string mDirectory;
     sl::CameraParameters mIntrinsics;
+    sl::RuntimeParameters runtime_params;
 };
 
